@@ -2,11 +2,11 @@
 
 Production-structured starter for a full-stack **Payroll Processing System** with multi-tenant hierarchy: **Bank → Corporate → Users → Payroll**.
 
-**This README matches the `main` branch.** If you work on another branch, update the **Current state** section there so readers see what that branch actually contains.
+**Convention:** Keep **`main`** as the source of truth. Whenever you **merge into `main`**, refresh the **Current state** section (and add rows to the doc table if new docs appear) so you can return weeks later and rely on this README alone.
 
 ---
 
-## Current state (`main`)
+## Current state
 
 **Working in the app today**
 
@@ -16,9 +16,9 @@ Production-structured starter for a full-stack **Payroll Processing System** wit
 - **Corporate** — Manage **users**; **Payroll upload** (`.xlsx`, pick month); each upload is a **batch** (starts **pending**). **Submit** or **delete** while pending; after submit, delete is blocked. **Employee Payments** menu: **Pending** vs **Submitted** batch lists; open payment lines; **CSV** export (batch list + lines in the modal). **Banks** only see **submitted** batches and those lines.
 - **Run locally** — `payprosys/devops/docker-compose.yml` (Postgres + API + static UI on ports **3000** / **8080** / **5432**).
 
-**Not implemented on `main` yet**
+**Not implemented yet** (see **`docs/WORKFLOW_REQUIREMENTS.md`**; backlog **`FUTURE_FEATURES.md`**)
 
-- Multi-level **L1…Ln** review, **Inbox/History**, remark threads, corporate **approve vs send to bank** split workflow, full bank approval chain — see **`docs/WORKFLOW_REQUIREMENTS.md`**. Other ideas: **`FUTURE_FEATURES.md`**.
+- Multi-level **L1…Ln** review, **Inbox/History**, remark threads, corporate **approve vs send to bank** / send-to-bank flow, full bank approval chain.
 
 ---
 
