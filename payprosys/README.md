@@ -32,6 +32,7 @@ Production-structured starter for a full-stack **Payroll Processing System** wit
 | **docs/PayProSys_overview_pack.*** (`html` / `pdf` / `docx`) | One pack: simple wireframes + same story as the business doc (good to attach to an intro email). Regenerate PDF from the `.html` with Chrome `--print-to-pdf` if you edit it. |
 | **docs/IMPLEMENTATION_PLAN_PAYROLL_AND_CORP_ROLES.md** | Older / alternate implementation notes (operator vs reviewer); kept for reference. |
 | **FUTURE_FEATURES.md** | Backlog and “not in this POC” items. |
+| **docs/phases/** | Numbered phase folders (e.g. `01-phase1`) for dev order; see `docs/phases/README.md`. |
 
 ---
 
