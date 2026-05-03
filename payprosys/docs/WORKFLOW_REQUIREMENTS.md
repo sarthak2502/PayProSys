@@ -124,7 +124,7 @@ stateDiagram-v2
 
 ---
 
-## 5. Implementation phases (unchanged intent, POC-scoped)
+## 5. Implementation order (POC-scoped)
 
 | Phase | Deliverable |
 |--------|-------------|
