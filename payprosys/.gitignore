@@ -1,0 +1,19 @@
+# Backend
+backend/target/
+backend/.settings/
+backend/.classpath
+backend/.project
+backend/bin/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Env
+.env
+.env.local

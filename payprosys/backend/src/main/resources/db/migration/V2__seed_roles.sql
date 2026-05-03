@@ -1,0 +1,4 @@
+INSERT INTO roles (name) VALUES ('BANK_ADMIN');
+INSERT INTO roles (name) VALUES ('BANK_USER');
+INSERT INTO roles (name) VALUES ('CORP_ADMIN');
+INSERT INTO roles (name) VALUES ('CORP_USER');

@@ -1,0 +1,99 @@
+# PayProSys — What the system does
+
+This note is written for anyone reviewing the **product idea** before a demo. It stays away from engineers’ details (how the software is built or wired internally).
+
+---
+
+## What PayProSys is for
+
+- Banks work with **companies** (called **corporates** here). Those companies upload **employee payroll** from spreadsheets so the bank can see what needs to be paid.
+- People in the product are **portal users** (they log in). **Employees on the payroll file** are not separate logins—they are rows in the spreadsheet.
+
+---
+
+## Who does what — big picture
+
+- **Super Admin (platform)**  
+  Sets up **banks** and can look at users across the whole system when needed.
+
+- **Bank**  
+  Bank staff (**Bank Admin** and **Bank User**) only see **corporates that belong to their bank**. They help onboard corporates and users on the bank side.
+
+- **Corporate (company)**  
+  **Corporate Admin** and **Corporate User** work for one company. They upload payroll and manage batches and payments **for that company only**.
+
+---
+
+## Signing in
+
+- Users sign in with **email and password**.
+- Each person has a **role** (Super Admin, Bank Admin, Bank User, Corporate Admin, or Corporate User). That role decides which menus and companies they’re allowed to see.
+- Anything you’ll see in the demo is **intentionally simple** (including how passwords are handled). It is **not** meant to be a production security standard.
+
+---
+
+## Super Admin
+
+- Create and manage **banks**.
+- Open a **Users** view to see portal users across the platform (useful for support or a guided demo).
+- Super Admin is **not** tied to one bank or one corporate for day-to-day payroll work.
+
+---
+
+## Bank (Bank Admin / Bank User)
+
+- See **only corporates** linked to **their** bank.
+- **Bank Admin** can create a **corporate** and a **corporate admin** for that company, and manage **bank-side users**.
+- **Bank User** has a similar view of corporates but is not the main “setup everything” role.
+
+---
+
+## Corporate (company side)
+
+- **Corporate Admin** can add **Corporate User** accounts for colleagues at the same company.
+- Everyone on the corporate side only sees **their own company**—not other companies or other banks’ data.
+
+---
+
+## Payroll upload (spreadsheet)
+
+- Uploads use an **Excel file** (`.xlsx`).
+- The file is expected to have columns such as: employee name, account number, joining date, ID, amount, and **what the payment is for** (for example salary or reimbursement). The demo sample file shows the layout.
+- When uploading, the user picks **which month** that payroll is for.
+
+---
+
+## Batches — submit and delete
+
+- Each upload creates a **batch** (a group of rows from that file).
+- A new batch starts as **pending**. While it is pending, the corporate can **submit** it or **delete** it.
+- After **submit**, the batch is **final for the bank’s view**: the corporate **cannot delete** it anymore.
+- **Banks only see batches that have been submitted.** Pending batches stay **internal to the corporate** until someone submits them.
+
+---
+
+## Employee payments (what you see in the app)
+
+- **Employee Payments** is its own area in the menu (separate from **upload**).
+- **Corporate users** can switch between:
+  - **Pending** — batches not yet submitted (still being prepared).
+  - **Submitted** — batches that have been sent through and that the bank is allowed to see.
+- **Bank users** see **submitted** payroll batches for corporates under their bank and can open the **payment lines** for those batches.
+
+---
+
+## Not in scope for this demo (ideas for later)
+
+- Formal approval chains (e.g. reviewer vs operator), email activation, stricter password rules, and full production-style security and hosting.
+- Anything listed as future in the project’s **future features** note, unless the presenter says otherwise.
+
+---
+
+## Honest limits of the demo
+
+- No formal uptime or service-level promises.
+- Treat it as a **walkthrough system** to show the workflow, not a finished bank product.
+
+---
+
+For a **step-by-step demo script** (who logs in, in what order), use **`DEMO_AND_USER_GUIDE.md`** in the same `docs` folder.

@@ -1,0 +1,5 @@
+/bin/
+
+# OS / IDE noise
+.DS_Store
+**/.DS_Store
