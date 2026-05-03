@@ -13,6 +13,9 @@ RUN mvn package -Dmaven.test.skip=true -B
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# For Docker healthchecks (Compose waits until the API port accepts traffic)
+RUN apk add --no-cache curl
+
 RUN adduser -D -s /bin/sh appuser
 USER appuser
 

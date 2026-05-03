@@ -36,6 +36,10 @@ public class Bank {
     @Column(nullable = false)
     private String name;
 
+    /** Public URL or data URL for header / profile branding. */
+    @Column(name = "logo_url", length = 1024)
+    private String logoUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

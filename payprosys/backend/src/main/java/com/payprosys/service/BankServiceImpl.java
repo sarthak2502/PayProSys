@@ -31,6 +31,7 @@ public class BankServiceImpl implements BankService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final BankMapper bankMapper;
+    private final WorkflowStepBootstrapService workflowStepBootstrapService;
 
     @Override
     @Transactional
@@ -42,6 +43,7 @@ public class BankServiceImpl implements BankService {
                 .name(request.getName())
                 .build();
         bank = bankRepository.save(bank);
+        workflowStepBootstrapService.ensureDefaultBankSteps(bank);
         Role bankAdminRole = roleRepository.findByName(RoleName.BANK_ADMIN)
                 .orElseThrow(() -> new IllegalStateException("BANK_ADMIN role not found"));
         User admin = User.builder()
@@ -93,6 +95,7 @@ public class BankServiceImpl implements BankService {
                 .name(request.getName())
                 .build();
         bank = bankRepository.save(bank);
+        workflowStepBootstrapService.ensureDefaultBankSteps(bank);
         return bankMapper.toDto(bank);
     }
 

@@ -17,6 +17,14 @@ public class CurrentUser {
         return attr instanceof SessionInfo ? (SessionInfo) attr : null;
     }
 
+    public SessionInfo requireSession(HttpServletRequest request) {
+        SessionInfo session = getSession(request);
+        if (session == null) {
+            throw new ForbiddenException("Not authenticated");
+        }
+        return session;
+    }
+
     /** Throws ForbiddenException if current user has none of the given roles. */
     public SessionInfo requireRole(HttpServletRequest request, String... allowedRoles) {
         SessionInfo session = getSession(request);

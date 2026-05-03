@@ -66,6 +66,33 @@ public class PayrollBatch {
     @Builder.Default
     private PayrollBatchStatus batchStatus = PayrollBatchStatus.SUBMITTED;
 
+    /** Richer corporate lifecycle (Phase 1); see CorporateFlowState. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "corporate_flow_state", nullable = false, length = 40)
+    @Builder.Default
+    private CorporateFlowState corporateFlowState = CorporateFlowState.CORP_NEW;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "bank_flow_state", length = 40)
+    private BankFlowState bankFlowState;
+
+    /** Payroll vs vendor payout; set at upload. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_batch_kind", nullable = false, length = 20)
+    @Builder.Default
+    private PaymentBatchKind paymentBatchKind = PaymentBatchKind.PAYROLL;
+
+    /** 1 = L1, 2 = L2, … while batch is with corporate reviewers. */
+    @Column(name = "current_corporate_review_level")
+    private Integer currentCorporateReviewLevel;
+
+    @Column(name = "current_bank_review_level")
+    private Integer currentBankReviewLevel;
+
+    /** Only this text (with send-to-bank) is intended to be visible to the bank; internal remarks use review_events. */
+    @Column(name = "remarks_for_bank", columnDefinition = "TEXT")
+    private String remarksForBank;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

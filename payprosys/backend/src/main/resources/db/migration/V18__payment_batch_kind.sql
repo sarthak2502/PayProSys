@@ -1,0 +1,1 @@
+ALTER TABLE payroll_batches ADD COLUMN IF NOT EXISTS payment_batch_kind VARCHAR(20) NOT NULL DEFAULT 'PAYROLL';

@@ -41,6 +41,10 @@ public class Corporate {
     @Column(nullable = false)
     private String name;
 
+    /** Public URL or data URL for header / profile branding. */
+    @Column(name = "logo_url", length = 1024)
+    private String logoUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default

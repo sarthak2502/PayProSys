@@ -7,6 +7,12 @@ import CorporatesPage from './pages/CorporatesPage';
 import UsersPage from './pages/UsersPage';
 import PayrollUploadPage from './pages/PayrollUploadPage';
 import EmployeePaymentsPage from './pages/EmployeePaymentsPage';
+import PayrollInboxPage from './pages/PayrollInboxPage';
+import PayrollHistoryPage from './pages/PayrollHistoryPage';
+import PayrollBatchDetailPage from './pages/PayrollBatchDetailPage';
+import PayrollWorkflowSettingsPage from './pages/PayrollWorkflowSettingsPage';
+import ProfilePage from './pages/ProfilePage';
+import PayrollGuard from './PayrollGuard';
 import { getUser } from './api';
 
 function PrivateRoute({ children }) {
@@ -18,10 +24,13 @@ function PrivateRoute({ children }) {
 function PayrollLanding() {
   const u = getUser();
   const roles = u?.roles ?? [];
+  if (roles.includes('SUPER_ADMIN')) return <Navigate to="/" replace />;
+  if (roles.includes('CORP_ADMIN') || roles.includes('BANK_ADMIN')) {
+    return <Navigate to="/payroll/workflow-settings" replace />;
+  }
   const isCorp = roles.includes('CORP_ADMIN') || roles.includes('CORP_USER');
   const isBankUser = roles.includes('BANK_ADMIN') || roles.includes('BANK_USER');
-  if (isCorp) return <Navigate to="/payroll/upload" replace />;
-  if (isBankUser) return <Navigate to="/payroll/employee-payments" replace />;
+  if (isCorp || isBankUser) return <Navigate to="/payroll/inbox" replace />;
   return <Navigate to="/" replace />;
 }
 
@@ -41,9 +50,16 @@ export default function App() {
         <Route path="banks" element={<BanksPage />} />
         <Route path="corporates" element={<CorporatesPage />} />
         <Route path="users" element={<UsersPage />} />
-        <Route path="payroll/upload" element={<PayrollUploadPage />} />
-        <Route path="payroll/employee-payments" element={<EmployeePaymentsPage />} />
-        <Route path="payroll" element={<PayrollLanding />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route element={<PayrollGuard />}>
+          <Route path="payroll/upload" element={<PayrollUploadPage />} />
+          <Route path="payroll/inbox" element={<PayrollInboxPage />} />
+          <Route path="payroll/history" element={<PayrollHistoryPage />} />
+          <Route path="payroll/batches/:id" element={<PayrollBatchDetailPage />} />
+          <Route path="payroll/workflow-settings" element={<PayrollWorkflowSettingsPage />} />
+          <Route path="payroll/employee-payments" element={<EmployeePaymentsPage />} />
+          <Route path="payroll" element={<PayrollLanding />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

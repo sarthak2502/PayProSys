@@ -3,7 +3,10 @@ package com.payprosys.service;
 import com.payprosys.dto.PayrollBatchDto;
 import com.payprosys.dto.PayrollRecordDto;
 import com.payprosys.dto.PayrollUploadResponse;
+import com.payprosys.entity.BankFlowState;
 import com.payprosys.entity.Corporate;
+import com.payprosys.entity.CorporateFlowState;
+import com.payprosys.entity.PaymentBatchKind;
 import com.payprosys.entity.PayrollBatch;
 import com.payprosys.entity.PayrollBatchStatus;
 import com.payprosys.entity.PayrollRecord;
@@ -33,6 +36,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,10 +56,12 @@ public class PayrollServiceImpl implements PayrollService {
     private final CorporateRepository corporateRepository;
     private final UserRepository userRepository;
     private final PayrollBatchMapper payrollBatchMapper;
+    private final PayrollWorkflowService payrollWorkflowService;
 
     @Override
     @Transactional
-    public PayrollUploadResponse uploadPayrollExcel(UUID corporateId, UUID uploadedById, String fileName, byte[] content, Integer yearMonth) {
+    public PayrollUploadResponse uploadPayrollExcel(
+            UUID corporateId, UUID uploadedById, String fileName, byte[] content, Integer yearMonth, PaymentBatchKind paymentBatchKind) {
         Corporate corporate = corporateRepository.findById(corporateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Corporate", corporateId));
         User uploadedBy = userRepository.findById(uploadedById)
@@ -63,6 +69,7 @@ public class PayrollServiceImpl implements PayrollService {
 
         ParsedPayroll parsed = parseExcel(content);
 
+        PaymentBatchKind kind = paymentBatchKind != null ? paymentBatchKind : PaymentBatchKind.PAYROLL;
         PayrollBatch batch = PayrollBatch.builder()
                 .corporate(corporate)
                 .uploadedBy(uploadedBy)
@@ -71,6 +78,9 @@ public class PayrollServiceImpl implements PayrollService {
                 .fileName(fileName)
                 .yearMonth(yearMonth)
                 .batchStatus(PayrollBatchStatus.PENDING)
+                .corporateFlowState(CorporateFlowState.CORP_NEW)
+                .currentCorporateReviewLevel(null)
+                .paymentBatchKind(kind)
                 .build();
 
         for (ParsedRecord pr : parsed.getRecords()) {
@@ -95,38 +105,87 @@ public class PayrollServiceImpl implements PayrollService {
                 .fileName(batch.getFileName())
                 .yearMonth(batch.getYearMonth())
                 .batchStatus(PayrollBatchStatus.PENDING.name())
+                .paymentBatchKind(kind.name())
                 .build();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<PayrollBatchDto> getBatchesByCorporate(UUID corporateId, PayrollBatchStatus status) {
-        List<PayrollBatch> batches = status == null
-                ? payrollBatchRepository.findByCorporateIdOrderByCreatedAtDesc(corporateId)
-                : payrollBatchRepository.findByCorporateIdAndBatchStatusOrderByCreatedAtDesc(corporateId, status);
-        return batches.stream().map(payrollBatchMapper::toDto).toList();
+    public PayrollBatchDto getBatchById(UUID batchId, UUID actorCorporateId, UUID actorBankId, UUID actorUserId, List<String> actorRoles) {
+        PayrollBatch batch = payrollBatchRepository.findByIdWithCorporateAndUploadedBy(batchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payroll batch", batchId));
+        if (actorCorporateId != null) {
+            if (!batch.getCorporate().getId().equals(actorCorporateId)) {
+                throw new ForbiddenException("Cannot view this batch");
+            }
+            PayrollBatchDto dto = payrollBatchMapper.toDto(batch);
+            if (actorUserId != null && actorRoles != null) {
+                dto.setViewOnly(payrollWorkflowService.isCorporateViewOnlyInboxAccess(batch, actorUserId, actorRoles));
+            }
+            return dto;
+        }
+        if (actorBankId != null) {
+            if (batch.getCorporate().getBank() == null || !batch.getCorporate().getBank().getId().equals(actorBankId)) {
+                throw new ForbiddenException("Batch is not under your bank");
+            }
+            boolean visible = (batch.getBatchStatus() == PayrollBatchStatus.SUBMITTED
+                    || batch.getBatchStatus() == PayrollBatchStatus.COMPLETED)
+                    && batch.getCorporateFlowState() == CorporateFlowState.CORP_SENT_TO_BANK;
+            boolean terminal = batch.getBankFlowState() == BankFlowState.BANK_PROCESS_PAYMENT;
+            boolean awaitingCorporate = batch.getBatchStatus() == PayrollBatchStatus.PENDING
+                    && batch.getCorporateFlowState() == CorporateFlowState.CORP_CLARIFICATION
+                    && batch.getBankFlowState() == BankFlowState.BANK_SENT_TO_CORPORATE;
+            if (!visible && !terminal && !awaitingCorporate) {
+                throw new ForbiddenException("Batch is not visible to the bank yet");
+            }
+            PayrollBatchDto dto = payrollBatchMapper.toDto(batch);
+            if (actorUserId != null && actorRoles != null) {
+                dto.setViewOnly(payrollWorkflowService.isBankViewOnlyInboxAccess(batch, actorUserId, actorRoles));
+            }
+            return dto;
+        }
+        throw new ForbiddenException("Not authorized");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PayrollBatchDto> getBatchesByCorporate(UUID corporateId, PayrollBatchStatus status, PaymentBatchKind paymentBatchKind) {
+        List<PayrollBatch> batches;
+        if (status == null) {
+            batches = payrollBatchRepository.findByCorporateIdOrderByCreatedAtDesc(corporateId);
+        } else if (status == PayrollBatchStatus.SUBMITTED) {
+            batches = payrollBatchRepository.findByCorporateIdAndBatchStatusInOrderByCreatedAtDesc(
+                    corporateId, EnumSet.of(PayrollBatchStatus.SUBMITTED, PayrollBatchStatus.COMPLETED));
+        } else {
+            batches = payrollBatchRepository.findByCorporateIdAndBatchStatusOrderByCreatedAtDesc(corporateId, status);
+        }
+        return batches.stream()
+                .filter(b -> paymentBatchKind == null || b.getPaymentBatchKind() == paymentBatchKind)
+                .map(payrollBatchMapper::toDto)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<PayrollBatchDto> getSubmittedBatchesForBank(UUID bankId) {
         return payrollBatchRepository.findByBankIdAndBatchStatusOrderByCreatedAtDesc(bankId, PayrollBatchStatus.SUBMITTED).stream()
-                .map(payrollBatchMapper::toDto).toList();
+                .filter(b -> b.getBankFlowState() != BankFlowState.BANK_PROCESS_PAYMENT)
+                .map(payrollBatchMapper::toDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PayrollBatchDto> getCompletedBatchesForBank(UUID bankId) {
+        return payrollBatchRepository.findByBankIdAndBatchStatusOrderByCreatedAtDesc(bankId, PayrollBatchStatus.COMPLETED).stream()
+                .map(payrollBatchMapper::toDto)
+                .toList();
     }
 
     @Override
     @Transactional
-    public void submitBatch(UUID batchId, UUID corporateId) {
-        PayrollBatch batch = payrollBatchRepository.findById(batchId)
-                .orElseThrow(() -> new ResourceNotFoundException("Payroll batch", batchId));
-        if (!batch.getCorporate().getId().equals(corporateId)) {
-            throw new ForbiddenException("Batch does not belong to your corporate");
-        }
-        if (batch.getBatchStatus() != PayrollBatchStatus.PENDING) {
-            throw new BadRequestException("Only pending batches can be submitted");
-        }
-        batch.setBatchStatus(PayrollBatchStatus.SUBMITTED);
-        payrollBatchRepository.save(batch);
+    public void submitBatch(UUID batchId, UUID corporateId, UUID actorUserId) {
+        payrollWorkflowService.submitBatchLegacy(batchId, corporateId, actorUserId);
     }
 
     @Override
@@ -150,15 +209,20 @@ public class PayrollServiceImpl implements PayrollService {
         if (batch.getBatchStatus() != PayrollBatchStatus.PENDING) {
             throw new BadRequestException("Submitted batches cannot be deleted");
         }
+        if (batch.getCorporateFlowState() != CorporateFlowState.CORP_NEW
+                || batch.getCurrentCorporateReviewLevel() != null) {
+            throw new BadRequestException("Only draft batches (not yet submitted for review) can be deleted");
+        }
         payrollBatchRepository.delete(batch);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<PayrollRecordDto> getRecordsByCorporate(UUID corporateId, Integer yearMonth) {
+        var rollupStatuses = EnumSet.of(PayrollBatchStatus.SUBMITTED, PayrollBatchStatus.COMPLETED);
         List<PayrollRecord> records = yearMonth != null
-                ? payrollRecordRepository.findByCorporateIdAndYearMonthAndBatchStatusOrder(corporateId, yearMonth, PayrollBatchStatus.SUBMITTED)
-                : payrollRecordRepository.findByCorporateIdAndBatchStatusOrderByMonthAndName(corporateId, PayrollBatchStatus.SUBMITTED);
+                ? payrollRecordRepository.findByCorporateIdAndYearMonthAndBatchStatusesOrder(corporateId, yearMonth, rollupStatuses)
+                : payrollRecordRepository.findByCorporateIdAndBatchStatusesOrderByMonthAndName(corporateId, rollupStatuses);
         return records.stream().map(this::toRecordDto).toList();
     }
 
@@ -175,8 +239,16 @@ public class PayrollServiceImpl implements PayrollService {
             if (!batch.getCorporate().getBank().getId().equals(actorBankId)) {
                 throw new ForbiddenException("Batch is not under your bank");
             }
-            if (batch.getBatchStatus() != PayrollBatchStatus.SUBMITTED) {
-                throw new ForbiddenException("Pending batches are not visible to banks");
+            boolean okSubmitted = batch.getBatchStatus() == PayrollBatchStatus.SUBMITTED
+                    && batch.getCorporateFlowState() == CorporateFlowState.CORP_SENT_TO_BANK;
+            boolean okCompleted = batch.getBatchStatus() == PayrollBatchStatus.COMPLETED
+                    && batch.getCorporateFlowState() == CorporateFlowState.CORP_SENT_TO_BANK
+                    && batch.getBankFlowState() == BankFlowState.BANK_PROCESS_PAYMENT;
+            boolean okRecall = batch.getBatchStatus() == PayrollBatchStatus.PENDING
+                    && batch.getCorporateFlowState() == CorporateFlowState.CORP_CLARIFICATION
+                    && batch.getBankFlowState() == BankFlowState.BANK_SENT_TO_CORPORATE;
+            if (!okSubmitted && !okCompleted && !okRecall) {
+                throw new ForbiddenException("Records are not visible to the bank for this batch state");
             }
         } else {
             throw new ForbiddenException("Not authorized");
