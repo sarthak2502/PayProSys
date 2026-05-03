@@ -6,7 +6,7 @@ This document lists planned or potential features that are **not** in the curren
 
 ## Corporate
 
-- **Configurable roles & workflows (POC — specified)** — Corporate Admin / Bank Admin each configure **linear L1…Ln** (display names) and assign users to levels; Super Admin does not configure workflows. **Inbox** / **History**, remarks (no file re-upload in POC), **approve vs send to bank**, bank visibility of **only** send-to-bank remarks. See **`docs/WORKFLOW_REQUIREMENTS.md`** for locked decisions, state sketches, and phases.
+- **Configurable roles & workflows (POC — specified)** — Corporate Admin / Bank Admin each configure **linear L1…Ln** (display names) and assign users to levels; Super Admin does not configure workflows. **Inbox** / **History**, remarks (no file re-upload in POC), **approve vs send to bank**, bank visibility of **only** send-to-bank remarks. See **`docs/WORKFLOW_REQUIREMENTS.md`** for locked decisions, state sketches, and rollout sections.
 - **Per-record review** — Reviewer approves/rejects individual employee lines in a batch, not only the whole batch. (Future; after batch-level workflow is stable.)
 
 ## Payroll / Batches
