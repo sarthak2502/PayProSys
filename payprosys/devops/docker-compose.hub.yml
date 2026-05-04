@@ -1,13 +1,21 @@
 # Pre-built images on Docker Hub (sarthak1024).
 #
 # --- No clone: one command from GitHub (public repo; needs curl + Docker Compose v2) ---
-# Uses the compose file from GitHub raw; branch defaults to main (change if this file is only on another branch).
 #
+# You MUST use the raw file URL (plain YAML). Do NOT use the GitHub web "blob" page — that returns HTML and
+# Compose will fail with YAML errors like "mapping values are not allowed in this context".
+#
+#   Wrong:  https://github.com/.../blob/<branch>/.../docker-compose.hub.yml
+#   Right:  https://raw.githubusercontent.com/<user>/<repo>/<ref>/.../docker-compose.hub.yml
+#
+# main branch:
 #   curl -fsSL "https://raw.githubusercontent.com/sarthak2502/PayProSys/main/payprosys/devops/docker-compose.hub.yml" | docker compose -f - up -d
 #
-# Branch names with a slash (e.g. feature/foo): encode "/" as "%2F" in the URL, e.g. .../PayProSys/feature%2Ffoo/...
+# Branch with a slash in the name (encode "/" as "%2F"), e.g. feature/01-phase1-workflow-foundation:
+#   curl -fsSL "https://raw.githubusercontent.com/sarthak2502/PayProSys/feature%2F01-phase1-workflow-foundation/payprosys/devops/docker-compose.hub.yml" | docker compose -f - up -d
+#
 # Private GitHub: raw URLs need auth; clone the repo or download this file instead.
-# Stop stack (same compose content): pipe the same curl again but use: docker compose -f - down
+# Stop stack: pipe the same curl again but use: docker compose -f - down
 #
 # --- If you already have the repo ---
 # From payprosys/devops:  docker compose -f docker-compose.hub.yml up -d
