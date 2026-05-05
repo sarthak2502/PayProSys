@@ -6,6 +6,7 @@ import com.payprosys.dto.ApiResponse;
 import com.payprosys.dto.PayrollBatchDto;
 import com.payprosys.dto.PayrollRecordDto;
 import com.payprosys.dto.PayrollUploadResponse;
+import com.payprosys.entity.PaymentBatchKind;
 import com.payprosys.entity.PayrollBatchStatus;
 import com.payprosys.exception.BadRequestException;
 import com.payprosys.exception.ForbiddenException;
@@ -41,8 +42,12 @@ public class PayrollController {
     public ResponseEntity<ApiResponse<PayrollUploadResponse>> uploadPayroll(
             HttpServletRequest request,
             @RequestParam("file") MultipartFile file,
-            @RequestParam("month") String month) {
+            @RequestParam("month") String month,
+            @RequestParam(value = "paymentBatchKind", required = false, defaultValue = "PAYROLL") String paymentBatchKind) {
         SessionInfo session = currentUser.requireRole(request, "CORP_ADMIN", "CORP_USER");
+        if (!session.getRoles().contains("CORP_USER")) {
+            throw new ForbiddenException("Only corporate payroll users may upload files");
+        }
         if (session.getCorporateId() == null) {
             throw new ForbiddenException("User must be linked to a corporate");
         }
@@ -62,8 +67,9 @@ public class PayrollController {
         } catch (java.io.IOException e) {
             throw new BadRequestException("Failed to read file: " + e.getMessage());
         }
+        PaymentBatchKind kind = parsePaymentBatchKind(paymentBatchKind);
         PayrollUploadResponse response = payrollService.uploadPayrollExcel(
-                session.getCorporateId(), session.getUserId(), filename, content, yearMonth);
+                session.getCorporateId(), session.getUserId(), filename, content, yearMonth, kind);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Payroll uploaded", response));
     }
 
@@ -82,18 +88,20 @@ public class PayrollController {
         }
     }
 
-    /** Corporate: all or filtered by status (PENDING/SUBMITTED). Bank: supply corporateId only for their corporates. */
+    /** Corporate: all or filtered by status (PENDING / SUBMITTED includes completed / COMPLETED). Bank: supply corporateId only for their corporates. */
     @GetMapping("/batches")
     public ResponseEntity<ApiResponse<List<PayrollBatchDto>>> getBatches(HttpServletRequest request,
             @RequestParam UUID corporateId,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String paymentBatchKind) {
         var session = currentUser.requireRole(request, "CORP_ADMIN", "CORP_USER", "BANK_ADMIN", "BANK_USER");
         PayrollBatchStatus parsed = parseOptionalStatus(status);
+        PaymentBatchKind kindFilter = parseOptionalPaymentBatchKind(paymentBatchKind);
         if (session.getCorporateId() != null) {
             if (!session.getCorporateId().equals(corporateId)) {
                 throw new ForbiddenException("Cannot view another corporate's batches");
             }
-            return ResponseEntity.ok(ApiResponse.success(payrollService.getBatchesByCorporate(corporateId, parsed)));
+            return ResponseEntity.ok(ApiResponse.success(payrollService.getBatchesByCorporate(corporateId, parsed, kindFilter)));
         }
         // bank user: caller must only request corporates belonging to their bank (light check via service would need corporate repo)
         if (session.getBankId() == null) {
@@ -101,7 +109,7 @@ public class PayrollController {
         }
         // For bank, only allow listing per corporate they know; optional: verify corporate belongs to bank via repository
         payrollService.assertCorporateUnderBank(corporateId, session.getBankId());
-        return ResponseEntity.ok(ApiResponse.success(payrollService.getBatchesByCorporate(corporateId, parsed)));
+        return ResponseEntity.ok(ApiResponse.success(payrollService.getBatchesByCorporate(corporateId, parsed, kindFilter)));
     }
 
     /** Bank: all SUBMITTED batches across corporates of this bank (no corporateId). */
@@ -115,6 +123,27 @@ public class PayrollController {
         return ResponseEntity.ok(ApiResponse.success(batches));
     }
 
+    /** Bank: completed (payment processed) batches across corporates of this bank. */
+    @GetMapping("/batches/completed-for-bank")
+    public ResponseEntity<ApiResponse<List<PayrollBatchDto>>> getCompletedForBank(HttpServletRequest request) {
+        var session = currentUser.requireRole(request, "BANK_ADMIN", "BANK_USER");
+        if (session.getBankId() == null) {
+            throw new ForbiddenException("User must be linked to a bank");
+        }
+        List<PayrollBatchDto> batches = payrollService.getCompletedBatchesForBank(session.getBankId());
+        return ResponseEntity.ok(ApiResponse.success(batches));
+    }
+
+    /** Corporate: own batch. Bank: only when submitted to bank or terminal process-payment. */
+    @GetMapping("/batches/{id}")
+    public ResponseEntity<ApiResponse<PayrollBatchDto>> getBatch(HttpServletRequest request, @PathVariable UUID id) {
+        var session = currentUser.requireRole(request, "CORP_ADMIN", "CORP_USER", "BANK_ADMIN", "BANK_USER");
+        UUID corp = session.getCorporateId();
+        UUID bank = corp == null ? session.getBankId() : null;
+        PayrollBatchDto dto = payrollService.getBatchById(id, corp, bank, session.getUserId(), session.getRoles());
+        return ResponseEntity.ok(ApiResponse.success(dto));
+    }
+
     private static PayrollBatchStatus parseOptionalStatus(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -122,8 +151,26 @@ public class PayrollController {
         try {
             return PayrollBatchStatus.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("status must be PENDING or SUBMITTED");
+            throw new BadRequestException("status must be PENDING, SUBMITTED, or COMPLETED");
         }
+    }
+
+    private static PaymentBatchKind parsePaymentBatchKind(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return PaymentBatchKind.PAYROLL;
+        }
+        try {
+            return PaymentBatchKind.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("paymentBatchKind must be PAYROLL or VENDOR");
+        }
+    }
+
+    private static PaymentBatchKind parseOptionalPaymentBatchKind(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return parsePaymentBatchKind(raw);
     }
 
     @PostMapping("/batches/{id}/submit")
@@ -132,7 +179,7 @@ public class PayrollController {
         if (session.getCorporateId() == null) {
             throw new ForbiddenException("User must be linked to a corporate");
         }
-        payrollService.submitBatch(id, session.getCorporateId());
+        payrollService.submitBatch(id, session.getCorporateId(), session.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Batch submitted", null));
     }
 

@@ -1,0 +1,76 @@
+# Pre-built images on Docker Hub (sarthak1024).
+#
+# --- No clone: one command from GitHub (public repo; needs curl + Docker Compose v2) ---
+#
+# You MUST use the raw file URL (plain YAML). Do NOT use the GitHub web "blob" page — that returns HTML and
+# Compose will fail with YAML errors like "mapping values are not allowed in this context".
+#
+#   Wrong:  https://github.com/.../blob/<branch>/.../docker-compose.hub.yml
+#   Right:  https://raw.githubusercontent.com/<user>/<repo>/<ref>/.../docker-compose.hub.yml
+#
+# main branch:
+#   curl -fsSL "https://raw.githubusercontent.com/sarthak2502/PayProSys/main/payprosys/devops/docker-compose.hub.yml" | docker compose -f - up -d
+#
+# Branch with a slash in the name (encode "/" as "%2F"), e.g. feature/01-phase1-workflow-foundation:
+#   curl -fsSL "https://raw.githubusercontent.com/sarthak2502/PayProSys/feature%2F01-phase1-workflow-foundation/payprosys/devops/docker-compose.hub.yml" | docker compose -f - up -d
+#
+# Private GitHub: raw URLs need auth; clone the repo or download this file instead.
+# Stop stack: pipe the same curl again but use: docker compose -f - down
+#
+# --- If you already have the repo ---
+# From payprosys/devops:  docker compose -f docker-compose.hub.yml up -d
+# From repo root:        docker compose -f payprosys/devops/docker-compose.hub.yml up -d
+#
+# App: http://localhost:3000  (API proxied by frontend; no need to open 8080 in the browser.)
+# Postgres: localhost:5432 (demo credentials — not for production)
+#
+# First boot: empty DB → Flyway applies migrations (includes demo seed users).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payprosys
+      POSTGRES_USER: payprosys
+      POSTGRES_PASSWORD: payprosys
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payprosys -d payprosys"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: docker.io/sarthak1024/payprosys-backend:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: stage
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: payprosys
+      DB_USERNAME: payprosys
+      DB_PASSWORD: payprosys
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  frontend:
+    image: docker.io/sarthak1024/payprosys-frontend:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

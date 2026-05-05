@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser } from '../api';
 
@@ -15,11 +15,29 @@ function formatYearMonth(ym) {
   return s;
 }
 
+function isPending(b) {
+  return (b.batchStatus || '').toUpperCase() === 'PENDING';
+}
+
+function isRejected(b) {
+  return (b.corporateFlowState || '').toUpperCase() === 'CORP_REJECTED';
+}
+
+function isDraftBatch(b) {
+  return (
+    isPending(b) &&
+    (b.corporateFlowState || '').toUpperCase() === 'CORP_NEW' &&
+    (b.currentCorporateReviewLevel == null || b.currentCorporateReviewLevel === undefined)
+  );
+}
+
 export default function PayrollUploadPage() {
   const user = getUser();
   const roles = user?.roles ?? [];
   const corporateId = user?.corporateId ?? null;
   const isCorp = roles.includes('CORP_ADMIN') || roles.includes('CORP_USER');
+  const isCorpAdmin = roles.includes('CORP_ADMIN');
+  const canUpload = roles.includes('CORP_USER') && !isCorpAdmin;
   const navigate = useNavigate();
 
   const currentYear = new Date().getFullYear();
@@ -31,6 +49,12 @@ export default function PayrollUploadPage() {
   const [summary, setSummary] = useState(null);
   const [batches, setBatches] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [paymentBatchKind, setPaymentBatchKind] = useState('PAYROLL');
+
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerBatch, setViewerBatch] = useState(null);
+  const [viewerRecords, setViewerRecords] = useState([]);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   useEffect(() => {
     if (!isCorp) {
@@ -54,12 +78,40 @@ export default function PayrollUploadPage() {
     }
   };
 
-  const handleSubmitBatch = async (batchId) => {
-    const ok = window.confirm('Submit this batch? Banks will see it after submission.');
-    if (!ok) return;
-    setBusyId(batchId);
+  const openViewer = async (batch) => {
+    setError('');
+    setViewerBatch(batch);
+    setViewerOpen(true);
+    setViewerRecords([]);
+    setViewerLoading(true);
     try {
-      const { data } = await api.post(`/payroll/batches/${batchId}/submit`);
+      const { data } = await api.get('/payroll/records/by-batch', { params: { batchId: batch.id } });
+      if (data?.success && data?.data) setViewerRecords(data.data);
+      else setViewerRecords([]);
+    } catch (e) {
+      setViewerRecords([]);
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const closeViewer = () => {
+    setViewerOpen(false);
+    setViewerBatch(null);
+    setViewerRecords([]);
+  };
+
+  const handleSubmitBatch = async (batch) => {
+    const draft = isDraftBatch(batch);
+    if (!draft) {
+      setError('Submit is only available for draft batches. After submission, use Inbox (and Send to bank from there when on approved hold).');
+      return;
+    }
+    const msg = 'Submit this batch for corporate review? It will appear in the payroll inbox at L1.';
+    if (!window.confirm(msg)) return;
+    setBusyId(batch.id);
+    try {
+      const { data } = await api.post(`/payroll/batches/${batch.id}/submit`);
       if (data?.success) {
         setError('');
         await loadBatches();
@@ -72,7 +124,7 @@ export default function PayrollUploadPage() {
   };
 
   const handleDeleteBatch = async (batchId) => {
-    const ok = window.confirm('Delete this pending batch permanently?');
+    const ok = window.confirm('Delete this draft batch permanently?');
     if (!ok) return;
     setBusyId(batchId);
     try {
@@ -92,11 +144,11 @@ export default function PayrollUploadPage() {
     e.preventDefault();
     const monthStr = month && month.length === 6 ? month : (month ? month.replace('-', '') : null);
     if (!corporateId || !file) {
-      setError('Choose a month and an Excel file.');
+      setError('Choose year, month, and an Excel file.');
       return;
     }
     if (!monthStr || monthStr.length !== 6) {
-      setError('Select a valid month.');
+      setError('Select a valid month for the chosen year.');
       return;
     }
     setError('');
@@ -105,6 +157,7 @@ export default function PayrollUploadPage() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('month', monthStr);
+    formData.append('paymentBatchKind', paymentBatchKind);
     try {
       const { data } = await api.post('/payroll/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -132,55 +185,87 @@ export default function PayrollUploadPage() {
 
   if (!isCorp) return null;
 
-  const isPending = (b) => (b.batchStatus || '').toUpperCase() === 'PENDING';
+  const showSubmit = (b) => !isRejected(b) && isDraftBatch(b);
+  const showDelete = (b) => !isRejected(b) && isDraftBatch(b);
 
   return (
     <>
-      <div className="card">
-        <h2>Upload payroll (Excel)</h2>
-        <p className="mb-2">
-          Select the month this payroll is for, then upload a .xlsx file with columns: <strong>Employee Name</strong>, <strong>Account Number</strong>, <strong>Joining Date</strong>, <strong>CPR ID</strong>, <strong>Amount</strong>, <strong>Payment for</strong> (e.g. salary, reimbursement). New uploads start as <strong>PENDING</strong>; use <strong>Employee Payments</strong> to review submitted vs pending batches.
-        </p>
-        <form onSubmit={handleUpload}>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Month (for this payroll)</label>
-              <div className="flex gap-2">
-                <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setMonth(''); }}>
-                  {years.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <select value={month} onChange={(e) => setMonth(e.target.value)}>
-                  <option value="">-- Month --</option>
-                  {months.map((m) => (
-                    <option key={m} value={toYearMonth(year, m)}>
-                      {new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}
-                    </option>
-                  ))}
+      {!!error && (
+        <div className="card">
+          <p className="error-msg">{error}</p>
+        </div>
+      )}
+      {canUpload && (
+        <div className="card">
+          <h2>Upload (Excel)</h2>
+          <p className="mb-2">
+            Choose <strong>year</strong> and <strong>month</strong>, then pick batch type and your .xlsx file. Columns:{' '}
+            <strong>Employee Name</strong>, <strong>Account Number</strong>, <strong>Joining Date</strong>,{' '}
+            <strong>CPR ID</strong>, <strong>Amount</strong>, <strong>Payment for</strong>. New batches stay <strong>drafts</strong>{' '}
+            until you <strong>Submit</strong> below; then they appear in <Link to="/payroll/inbox">Inbox</Link>. Send to bank
+            from <Link to="/payroll/inbox">Inbox</Link> when on approved hold.
+          </p>
+          <form onSubmit={handleUpload} className="upload-payroll-form">
+            <div className="form-group upload-field-year">
+              <label htmlFor="upload-year">Year</label>
+              <select id="upload-year" value={year} onChange={(e) => { setYear(Number(e.target.value)); setMonth(''); }}>
+                {years.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group upload-field-month">
+              <label htmlFor="upload-month">Month</label>
+              <select id="upload-month" value={month} onChange={(e) => setMonth(e.target.value)}>
+                <option value="">— Select month —</option>
+                {months.map((m) => (
+                  <option key={m} value={toYearMonth(year, m)}>
+                    {new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+              <small className="text-muted">Payroll period is year + month (e.g. March {year}).</small>
+            </div>
+            <div className="upload-actions-row">
+              <div className="form-group upload-field-kind">
+                <label htmlFor="upload-kind">Batch type</label>
+                <select id="upload-kind" value={paymentBatchKind} onChange={(e) => setPaymentBatchKind(e.target.value)}>
+                  <option value="PAYROLL">Payroll payment</option>
+                  <option value="VENDOR">Vendor payment</option>
                 </select>
               </div>
-              <small className="text-muted">e.g. March 2025 → 2025-03</small>
+              <div className="form-group upload-field-file">
+                <label htmlFor="upload-file">File (.xlsx)</label>
+                <input
+                  id="upload-file"
+                  type="file"
+                  accept=".xlsx"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <div className="upload-submit-wrap">
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Uploading…' : 'Upload'}
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="form-group">
-            <label>Excel file (.xlsx)</label>
-            <input
-              type="file"
-              accept=".xlsx"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          {error && <p className="error-msg">{error}</p>}
-          <button type="submit" disabled={loading}>
-            {loading ? 'Uploading...' : 'Upload'}
-          </button>
-        </form>
-      </div>
-      {summary && (
+          </form>
+        </div>
+      )}
+      {isCorpAdmin && !canUpload && (
+        <div className="card">
+          <h2>Payroll batches</h2>
+          <p className="mb-2 text-muted">Corporate admins cannot upload files. Open a batch with <strong>View</strong> to see lines (read-only).</p>
+        </div>
+      )}
+      {summary && canUpload && (
         <div className="card">
           <h2>Upload summary</h2>
           <p><strong>Month:</strong> {formatYearMonth(summary.yearMonth)}</p>
+          <p>
+            <strong>Batch type:</strong>{' '}
+            {summary.paymentBatchKind === 'VENDOR' ? 'Vendor payment' : 'Payroll payment'}
+          </p>
           <p><strong>Status:</strong> {summary.batchStatus ?? 'PENDING'}</p>
           <p><strong>Total records:</strong> {summary.totalRecords}</p>
           <p><strong>Total amount:</strong> {summary.totalAmount != null ? Number(summary.totalAmount).toLocaleString() : '-'}</p>
@@ -188,15 +273,20 @@ export default function PayrollUploadPage() {
         </div>
       )}
       <div className="card">
-        <h2>Batches</h2>
-        <p className="mb-2">Submit when ready for your bank to see the batch; only pending batches can be deleted.</p>
-        {batches.length === 0 ? (
-          <p>No uploads yet.</p>
+        <h2>Batches (drafts only)</h2>
+        <p className="mb-2">
+          Only <strong>draft</strong> uploads appear here. In-flight, completed, and rejected batches are in{' '}
+          <Link to="/payroll/inbox">Inbox</Link> or <Link to="/payroll/history">History</Link>. Use <strong>Submit</strong> to send a draft for L1 review.
+          <strong> View</strong> opens payroll lines read-only.
+        </p>
+        {batches.filter((b) => isDraftBatch(b)).length === 0 ? (
+          <p>No draft batches.</p>
         ) : (
           <table>
             <thead>
               <tr>
                 <th>Month</th>
+                <th>Type</th>
                 <th>Status</th>
                 <th>File</th>
                 <th>Records</th>
@@ -206,37 +296,43 @@ export default function PayrollUploadPage() {
               </tr>
             </thead>
             <tbody>
-              {batches.map((b) => (
+              {batches.filter((b) => isDraftBatch(b)).map((b) => (
                 <tr key={b.id}>
                   <td>{formatYearMonth(b.yearMonth)}</td>
-                  <td>{b.batchStatus ?? '-'}</td>
+                  <td>{b.paymentBatchKindLabel ?? b.paymentBatchKind ?? '—'}</td>
+                  <td>{b.batchStatusLabel ?? b.batchStatus ?? '-'}</td>
                   <td>{b.fileName}</td>
                   <td>{b.totalRecords}</td>
                   <td>{b.totalAmount != null ? Number(b.totalAmount).toLocaleString() : '-'}</td>
                   <td>{b.createdAt ? new Date(b.createdAt).toLocaleString() : '-'}</td>
                   <td>
-                    {isPending(b) ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn-inline"
-                          disabled={busyId === b.id}
-                          onClick={() => handleSubmitBatch(b.id)}
-                        >
-                          {busyId === b.id ? '…' : 'Submit'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-inline btn-danger-soft"
-                          disabled={busyId === b.id}
-                          onClick={() => handleDeleteBatch(b.id)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    ) : (
+                    <button type="button" className="btn-inline" style={{ marginRight: '0.5rem' }} onClick={() => openViewer(b)}>
+                      View
+                    </button>
+                    {showSubmit(b) ? (
+                      <button
+                        type="button"
+                        className="btn-inline"
+                        disabled={busyId === b.id}
+                        onClick={() => handleSubmitBatch(b)}
+                      >
+                        {busyId === b.id ? '…' : 'Submit'}
+                      </button>
+                    ) : null}
+                    {showSubmit(b) && showDelete(b) ? <span style={{ margin: '0 0.25rem' }} /> : null}
+                    {showDelete(b) ? (
+                      <button
+                        type="button"
+                        className="btn-inline btn-danger-soft"
+                        disabled={busyId === b.id}
+                        onClick={() => handleDeleteBatch(b.id)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                    {!showSubmit(b) && !showDelete(b) ? (
                       <span style={{ color: 'var(--text-secondary)' }}>—</span>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -244,6 +340,61 @@ export default function PayrollUploadPage() {
           </table>
         )}
       </div>
+
+      {viewerOpen && (
+        <div className="modal-overlay" role="presentation" onClick={closeViewer}>
+          <div className="modal-panel card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3 style={{ margin: 0 }}>
+                Batch lines — {viewerBatch?.fileName}
+              </h3>
+              <button type="button" className="modal-close" onClick={closeViewer} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+              Month {formatYearMonth(viewerBatch?.yearMonth)} · {viewerRecords.length} record(s) · read-only
+            </p>
+            {viewerLoading ? (
+              <p>Loading…</p>
+            ) : viewerRecords.length === 0 ? (
+              <p>No records.</p>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Employee name</th>
+                      <th>Account number</th>
+                      <th>Joining date</th>
+                      <th>CPR ID</th>
+                      <th>Amount</th>
+                      <th>Payment for</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewerRecords.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.employeeName}</td>
+                        <td>{r.accountNumber}</td>
+                        <td>{r.joiningDate ?? '—'}</td>
+                        <td>{r.cprId}</td>
+                        <td>{r.amount != null ? Number(r.amount).toLocaleString() : '—'}</td>
+                        <td>{r.paymentFor ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="modal-footer-actions">
+              <button type="button" className="secondary" onClick={closeViewer}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

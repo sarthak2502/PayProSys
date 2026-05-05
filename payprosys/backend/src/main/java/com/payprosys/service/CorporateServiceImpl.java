@@ -44,6 +44,7 @@ public class CorporateServiceImpl implements CorporateService {
     private final CorporateMapper corporateMapper;
     private final CorporateBankUserAssignmentRepository assignmentRepository;
     private final UserMapper userMapper;
+    private final WorkflowStepBootstrapService workflowStepBootstrapService;
 
     @Override
     @Transactional
@@ -59,6 +60,7 @@ public class CorporateServiceImpl implements CorporateService {
                 .bank(bank)
                 .build();
         corporate = corporateRepository.save(corporate);
+        workflowStepBootstrapService.ensureDefaultCorporateSteps(corporate);
         Role corpAdminRole = roleRepository.findByName(RoleName.CORP_ADMIN)
                 .orElseThrow(() -> new IllegalStateException("CORP_ADMIN role not found"));
         User admin = User.builder()
@@ -131,6 +133,7 @@ public class CorporateServiceImpl implements CorporateService {
                 .bank(bank)
                 .build();
         corporate = corporateRepository.save(corporate);
+        workflowStepBootstrapService.ensureDefaultCorporateSteps(corporate);
         return corporateMapper.toDto(corporate);
     }
 

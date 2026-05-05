@@ -129,9 +129,9 @@ stateDiagram-v2
 | Phase | Deliverable |
 |--------|-------------|
 | **0** | This doc + enum list in code comments. |
-| **1** | DB: corporate/bank **workflow steps** (L1…Ln labels), **user ↔ role** assignment per tenant, batch **status + current_step_index + corporate_remarks_to_bank** (single field for bank-visible text). |
-| **2** | APIs: transition actions, inbox list, history list, remarks append (draft/final minimal). |
-| **3** | UI: Corporate Admin / Bank Admin **workflow config**, **Inbox**, batch **detail + remark timeline** (internal vs bank-visible clearly separated in UI). |
+| **1** | DB: corporate/bank **workflow steps** (L1…Ln labels), **user ↔ role** assignment per tenant, batch **status + current_step_index + corporate_remarks_to_bank** (single field for bank-visible text). **Implemented (data layer):** Flyway `V12__workflow_foundation.sql`, entities + repositories, `PayrollBatch` flow columns, default L1–L3 seed + bootstrap on new bank/corporate; batch DTO exposes flow fields. **Still to do:** APIs that mutate flow / inbox (Phase 2). |
+| **2** | APIs: transition actions, inbox list, history list, remarks append (draft/final minimal). **Implemented:** `PayrollWorkflowController` under `/api/payroll/workflow` (inbox, history, review-events, corporate/bank actions); `PayrollWorkflowServiceImpl`; legacy `POST /api/payroll/batches/{id}/submit` delegates to workflow (one-click send if no review events yet, else requires `CORP_APPROVED_HOLD`). |
+| **3** | UI: Corporate Admin / Bank Admin **workflow config**, **Inbox**, batch **detail + remark timeline** (internal vs bank-visible clearly separated in UI). **Implemented:** Vite pages `PayrollInboxPage`, `PayrollHistoryPage`, `PayrollBatchDetailPage`, `PayrollWorkflowSettingsPage`; sidebar + `/payroll` landing → inbox; backend `WorkflowConfigController` (`/api/payroll/workflow/config/...`) and `GET /api/payroll/batches/{id}` for batch header. |
 | **4** | Bank chain + send back to corporate + gating (bank never sees batch until `CORP_SENT_TO_BANK`). |
 | **5** | EC2: HTTPS, env config, rotate demo credentials, smoke checklist. |
 

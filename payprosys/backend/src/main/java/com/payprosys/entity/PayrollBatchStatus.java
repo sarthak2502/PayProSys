@@ -1,7 +1,8 @@
 package com.payprosys.entity;
 
-/** Pending = uploaded, not finalized. Submitted = visible to banks and employee payment rollups. */
+/** Pending = uploaded, not finalized. Submitted = with bank. Completed = payment processed (terminal). */
 public enum PayrollBatchStatus {
     PENDING,
-    SUBMITTED
+    SUBMITTED,
+    COMPLETED
 }

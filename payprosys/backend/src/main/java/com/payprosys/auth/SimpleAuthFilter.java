@@ -26,7 +26,7 @@ public class SimpleAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
-        String path = request.getRequestURI();
+        String path = normalizePath(request.getRequestURI());
         if (path != null && (path.equals("/api/auth/login") || path.equals("/api/auth/activate"))) {
             filterChain.doFilter(request, response);
             return;
@@ -54,6 +54,25 @@ public class SimpleAuthFilter extends OncePerRequestFilter {
 
         request.setAttribute(SESSION_ATTR, session.get());
         filterChain.doFilter(request, response);
+    }
+
+    /** Strip query string, trailing slashes, and duplicate slashes so public auth paths match reliably. */
+    private static String normalizePath(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String p = raw;
+        int q = p.indexOf('?');
+        if (q >= 0) {
+            p = p.substring(0, q);
+        }
+        while (p.contains("//")) {
+            p = p.replace("//", "/");
+        }
+        while (p.length() > 1 && p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 
     private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {

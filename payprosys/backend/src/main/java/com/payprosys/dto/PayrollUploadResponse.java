@@ -22,4 +22,5 @@ public class PayrollUploadResponse {
     private String fileName;
     private Integer yearMonth;
     private String batchStatus;
+    private String paymentBatchKind;
 }
